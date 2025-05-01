@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Python Code Analyzer & Runner</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <style>
+    body {
+      background: #1e1e1e;
+      color: #dcdcdc;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    textarea {
+      width: 100%;
+      height: 300px;
+      background: #252526;
+      color: #dcdcdc;
+      border: 1px solid #555;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background-color: #007acc;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      border-radius: 5px;
+    }
+    .output, .analysis {
+      background: #2d2d30;
+      border-left: 4px solid #007acc;
+      padding: 15px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      border-radius: 6px;
+    }
+    h2 {
+      color: #569cd6;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🧠 Advanced Python Code Analyzer + Runner</h2>
+<p>Paste your Python script. Click <strong>Run</strong> to simulate execution and generate a detailed analysis.</p>
+
+<textarea id="codeInput" placeholder="# Paste Python code here..."></textarea>
+<br>
+<button onclick="runPython()">▶ Run & Analyze</button>
+
+<div class="output" id="outputBox"><strong>⏳ Waiting for input...</strong></div>
+<div class="analysis" id="analysisBox"></div>
+
+<script>
+  let pyodideReady = false;
+
+  async function runPython() {
+    const code = document.getElementById("codeInput").value;
+    const outputBox = document.getElementById("outputBox");
+    const analysisBox = document.getElementById("analysisBox");
+
+    if (!pyodideReady) {
+      outputBox.textContent = "🔄 Loading Pyodide (Python runtime)...";
+      self.pyodide = await loadPyodide();
+      pyodideReady = true;
+    }
+
+    let capturedOutput = [];
+    pyodide.setStdout({ batched: (s) => capturedOutput.push(s) });
+
+    try {
+      outputBox.textContent = "▶ Executing Python...\n";
+      await pyodide.runPythonAsync(code);
+      outputBox.innerHTML = `<strong>✅ Output:</strong>\n${capturedOutput.join("") || "(No output)"}`;
+    } catch (err) {
+      outputBox.innerHTML = `<strong>❌ Error:</strong>\n${err}`;
+    }
+
+    const lines = code.split("\n");
+    const imports = [...code.matchAll(/^import\s+([\w\.]+)/gm)].map(m => m[1]);
+    const functions = [...code.matchAll(/def\s+(\w+)\s*\(/g)].map(m => m[1]);
+    const asyncs = [...code.matchAll(/async\s+def\s+(\w+)\s*\(/g)].map(m => m[1]);
+    const docstrings = [...code.matchAll(/\"\"\"([\s\S]*?)\"\"\"/g)].map(m => m[1]);
+    const ifs = (code.match(/\bif\b/g) || []).length;
+    const fors = (code.match(/\bfor\b/g) || []).length;
+    const whiles = (code.match(/\bwhile\b/g) || []).length;
+    const trys = (code.match(/\btry\b/g) || []).length;
+    const evals = (code.match(/\beval\b|\bexec\b|os\.system/g) || []).length;
+    const funcBlocks = [...code.matchAll(/def\s+\w+\s*\(.*?\):([\s\S]*?)(?=^def\s|^async\s|\Z)/gm)];
+    const totalFuncLines = funcBlocks.reduce((sum, block) => sum + block[1].split("\n").length, 0);
+    const comments = lines.filter(l => l.trim().startsWith("#")).length;
+    const blankLines = lines.filter(l => !l.trim()).length;
+    const hasUUID = code.includes("uuid.");
+    const hasJSON = code.includes("json.");
+    const hasOpen = code.includes("open(");
+    const hasDatetime = code.includes("datetime");
+    const hasPrint = code.includes("print(");
+    const hasAwait = code.includes("await ");
+
+    let analysis = `📦 <strong>Imports:</strong> ${imports.join(", ") || "(None)"}\n`;
+    analysis += `🔧 <strong>Functions:</strong> ${functions.length} total (${asyncs.length} async)\n`;
+    analysis += `    ↳ All: ${functions.join(", ") || "(None)"}\n`;
+    analysis += `    ↳ Async: ${asyncs.join(", ") || "(None)"}\n`;
+    analysis += `📈 <strong>Avg Lines/Function:</strong> ${functions.length ? (totalFuncLines / functions.length).toFixed(1) : "0"}\n`;
+    analysis += `🔄 <strong>Flow:</strong> if:${ifs}, for:${fors}, while:${whiles}, try:${trys}\n`;
+    analysis += `📝 <strong>Docstrings:</strong> ${docstrings.length}\n`;
+    analysis += `🧮 <strong>Total Lines:</strong> ${lines.length}, Blank: ${blankLines}, Comments: ${comments}\n`;
+    analysis += `📂 <strong>Detected:</strong> ${hasOpen ? "File operations (`open`)\n" : ""}`;
+    analysis += hasUUID ? "🔑 Detected: UUID generation\n" : "";
+    analysis += hasDatetime ? "🕒 Detected: Time-stamping\n" : "";
+    analysis += hasJSON ? "📄 Detected: JSON handling\n" : "";
+    analysis += hasPrint ? "🖨️ Detected: Console printing\n" : "";
+    analysis += hasAwait ? "⏳ Detected: Awaitable coroutine logic\n" : "";
+    analysis += evals ? `⚠️ Warnings: ${evals} use(s) of eval/exec/os.system (⚠️ dangerous)\n` : `⚠️ Warnings: None\n`;
+    if (code.includes("spiderwebanalysis")) analysis += "🕸️ Uses external module: `spiderwebanalysis` (not runnable in browser)\n";
+
+    analysis += `\n📚 <strong>Docstring Samples:</strong>\n` + docstrings.map((d, i) => `  ${i + 1}. ${d.trim().split("\n")[0]}`).join("\n") + "\n";
+
+    analysisBox.innerHTML = `<strong>📊 Advanced Analysis:</strong>\n${analysis}`;
+  }
+</script>
+
+</body>
+</html>
